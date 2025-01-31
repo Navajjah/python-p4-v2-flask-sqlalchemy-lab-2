@@ -3,13 +3,11 @@ from sqlalchemy import MetaData
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy_serializer import SerializerMixin
 
-
 metadata = MetaData(naming_convention={
     "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
 })
 
 db = SQLAlchemy(metadata=metadata)
-
 
 class Customer(db.Model):
     __tablename__ = 'customers'
@@ -20,6 +18,17 @@ class Customer(db.Model):
     def __repr__(self):
         return f'<Customer {self.id}, {self.name}>'
 
+    reviews = db.relationship('Review', back_populates='customer')
+    items = association_proxy('reviews', 'item', creator=lambda item_object: Review(item=item_object))
+
+    serialize_rules = ('-reviews.customer',)  
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'reviews': [review.to_dict() for review in self.reviews]
+        }
 
 class Item(db.Model):
     __tablename__ = 'items'
@@ -30,3 +39,37 @@ class Item(db.Model):
 
     def __repr__(self):
         return f'<Item {self.id}, {self.name}, {self.price}>'
+
+    reviews = db.relationship('Review', back_populates='item')
+    customers = association_proxy('reviews', 'customer', creator=lambda customer_object: Review(customer=customer_object))
+
+    serialize_rules = ('-reviews.item',)  
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'price': self.price,
+            'reviews': [review.to_dict() for review in self.reviews]
+        }
+
+class Review(db.Model, SerializerMixin):
+    __tablename__ = 'reviews'
+
+    id = db.Column(db.Integer, primary_key=True)
+    comment = db.Column(db.String)
+    customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'))
+    item_id = db.Column(db.Integer, db.ForeignKey('items.id'))
+
+    customer = db.relationship('Customer', back_populates='reviews')
+    item = db.relationship('Item', back_populates='reviews')
+
+    serialize_rules = ('-customer.reviews', '-item.reviews')  
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'comment': self.comment,
+            'customer': self.customer,
+            'item': self.item
+        }
